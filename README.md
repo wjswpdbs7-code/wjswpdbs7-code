@@ -1,54 +1,85 @@
-# 🌊 Welcome to My Space!
-<!-- 상단 dynamic 그라데이션 wave 애니메이션 헤더 -->
-![Header](https://capsule-render.vercel.app/api?type=wave&color=auto&height=250&section=header&text=wjswpdbs7's%20Workspace&fontSize=70&animation=fadeIn)
+#!/usr/bin/env python3
+"""Pure-stdlib PNG chroma key: remove green-screen background, despill edges."""
+import struct, zlib, sys
 
-<div align="center">
-  <!-- 실시간 타이핑 애니메이션 효과 -->
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1000&color=A9F5F2&center=true&vCenter=true&width=500&lines=Hello+World!+👋;+I'm+a+Passionate+Developer;+Welcome+to+my+GitHub+Profile!+✨" alt="Typing SVG" />
-</div>
+def read_png(path):
+    data = open(path, 'rb').read()
+    assert data[:8] == b'\x89PNG\r\n\x1a\n'
+    pos, idat, w, h = 8, b'', 0, 0
+    while pos < len(data):
+        length = struct.unpack('>I', data[pos:pos+4])[0]
+        ctype = data[pos+4:pos+8]
+        chunk = data[pos+8:pos+8+length]
+        if ctype == b'IHDR':
+            w, h, bitd, color, comp, filt, inter = struct.unpack('>IIBBBBB', chunk)
+            assert bitd == 8 and color == 6 and inter == 0, (bitd, color, inter)
+        elif ctype == b'IDAT':
+            idat += chunk
+        pos += 12 + length
+    raw = zlib.decompress(idat)
+    stride = w * 4
+    out = bytearray(h * stride)
+    prev = bytearray(stride)
+    p = 0
+    for y in range(h):
+        f = raw[p]; p += 1
+        line = bytearray(raw[p:p+stride]); p += stride
+        if f == 1:
+            for i in range(4, stride):
+                line[i] = (line[i] + line[i-4]) & 0xff
+        elif f == 2:
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 0xff
+        elif f == 3:
+            for i in range(stride):
+                a = line[i-4] if i >= 4 else 0
+                line[i] = (line[i] + ((a + prev[i]) >> 1)) & 0xff
+        elif f == 4:
+            for i in range(stride):
+                a = line[i-4] if i >= 4 else 0
+                b = prev[i]
+                c = prev[i-4] if i >= 4 else 0
+                pa, pb, pc = abs(b-c), abs(a-c), abs(a+b-2*c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[i] = (line[i] + pr) & 0xff
+        out[y*stride:(y+1)*stride] = line
+        prev = line
+    return w, h, out
 
----
+def write_png(path, w, h, px):
+    stride = w * 4
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)
+        raw += px[y*stride:(y+1)*stride]
+    comp = zlib.compress(bytes(raw), 9)
+    def chunk(t, d):
+        c = t + d
+        return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    with open(path, 'wb') as f:
+        f.write(b'\x89PNG\r\n\x1a\n')
+        f.write(chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)))
+        f.write(chunk(b'IDAT', comp))
+        f.write(chunk(b'IEND', b''))
 
-### 🚀 About Me
-안녕하세요! 지속적으로 성장하고 개발을 즐기는 **JEYUN JEON**입니다. 
-새로운 기술을 배우고 입체적인 결과물을 만들어내는 것에 관심이 많습니다.
+def main(src, dst):
+    w, h, px = read_png(src)
+    n = 0
+    for i in range(0, len(px), 4):
+        r, g, b = px[i], px[i+1], px[i+2]
+        # hard key: strongly green pixel -> fully transparent
+        if g > 90 and g > r * 1.4 + 20 and g > b * 1.4 + 20:
+            px[i+3] = 0
+            n += 1
+        # soft key / despill: greenish edge -> clamp green, fade alpha
+        elif g > 80 and g > r * 1.15 and g > b * 1.15:
+            m = max(r, b)
+            excess = g - m
+            px[i+1] = m  # despill
+            a = px[i+3]
+            px[i+3] = max(0, a - min(255, excess * 2))
+    write_png(dst, w, h, px)
+    print(f'{w}x{h}, keyed {n} px -> {dst}')
 
-*   **🔭 Currently working on:** 프로젝트 성능 개선 및 새로운 기능 개발
-*   **🌱 Currently learning:** 다양한 프레임워크와 최신 개발 트렌드 공부 중
-*   **💬 Ask me about:** 무엇이든 편하게 물어보세요!
-
----
-
-### 🛠 Tech Stacks
-> 마우스를 올리면 은은하게 빛나는 스타일리시한 다크모드 기술 스택 뱃지입니다.
-
-![My Skills](https://skillicons.dev/icons?i=js,ts,html,css,c,cpp,python,git,github,visualstudio,vscode)
-
----
-
-### 📊 My GitHub Stats
-> 내 활동량에 따라 실시간으로 네온 컬러 그래프가 움직이는 애니메이션 카드입니다.
-
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=wjswpdbs7-code&show_icons=true&theme=tokyonight&animation=true" alt="github stats" height="180px" />
-  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=wjswpdbs7-code&layout=compact&theme=tokyonight&animation=true" alt="top languages" height="180px" />
-</p>
-
-<p align="center">
-  <!-- 실시간 커밋 활동에 따라 물결이 치는 애니메이션 트로피 -->
-  <img src="https://github-profile-trophy.vercel.firebaseapp.com/?username=wjswpdbs7-code&theme=tokyonight&column=4&margin-w=15&margin-h=15" alt="github trophy" />
-</p>
-
----
-
-### 📈 Contribution Graph
-<p align="center">
-  <!-- 화려한 네온 테마의 활동 그래프 -->
-  <img src="https://github-readme-activity-graph.vercel.app/graph?username=wjswpdbs7-code&theme=react-dark" width="100%" />
-</p>
-
----
-<div align="center">
-  <!-- 내 프로필에 다녀간 방문자 수 카운터 애니메이션 -->
-  <img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Fwjswpdbs7-code&count_bg=%23795548&title_bg=%23555555&icon=github.svg&icon_color=%23E7E7E7&title=Visitors&edge_flat=false" alt="Hits"/>
-</div>
+if __name__ == '__main__':
+    main(sys.argv[1], sys.argv[2])
